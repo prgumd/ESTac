@@ -1,0 +1,9 @@
+# pip requirements
+
+# opencv
+opencv-python
+
+# numeric things
+numpy == 1.* # don't use numpy 2 yet
+matplotlib
+nptyping
