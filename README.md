@@ -2,7 +2,7 @@
 
 [Webpage](https://prg.cs.umd.edu/ESTac), [arXiv]()
 
-[![Key Insertion Video](https://img.youtube.com/vi/wudA5iLC-cI/0.jpg)](https://www.youtube.com/watch?v=wudA5iLC-cI)
+[![Key Insertion Video](https://img.youtube.com/vi/MlxruxoRIZM/0.jpg)](https://www.youtube.com/watch?v=MlxruxoRIZM)
 
 ## Contents
 * `key_insertion.py`: the algorithm that inserts the key
@@ -10,7 +10,7 @@
 * `show_output.py`: code to make a detailed plot for controller tuning
 
 ## Data
-The recorded data for all 360 trials is available [here]()
+The recorded data for all 360 trials is available [here](https://drive.google.com/file/d/1mgqrAPzIa9R8Qd21aqWgDSGF-uZGYUZY/view?usp=sharing)
 
 ## Dependencies
 * numpy, scipy, matplotlib
