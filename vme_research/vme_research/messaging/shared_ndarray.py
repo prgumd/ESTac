@@ -6,18 +6,17 @@ import platform
 from typing import Any
 import numpy as np
 import time
-from nptyping import NDArray, Shape, DType
 from typing import Union, Tuple, Dict
 from queue import Empty
 
 class SharedNDArray:
-    def __init__(self, array: NDArray, id: Union[int, None], shm: shared_memory.SharedMemory, shm_indices: Tuple[int,int]) -> None:
+    def __init__(self, array: np.ndarray, id: Union[int, None], shm: shared_memory.SharedMemory, shm_indices: Tuple[int,int]) -> None:
         self.x = array
         self.id = id
         self.shm = shm
         self.shm_indices = shm_indices
-        self.shape: Shape = None # type: ignore
-        self.dtype: DType = None # type: ignore
+        self.shape = None # type: ignore
+        self.dtype = None # type: ignore
 
     def __getstate__(self)-> Dict[str, Any]:
         return {
@@ -35,7 +34,7 @@ class SharedNDArray:
 
 # Used when a SharedNDArray is expected but can't be provided
 class NonSharedNDArray:
-    def __init__(self, array: NDArray) -> None:
+    def __init__(self, array: np.ndarray) -> None:
         self.x = array
 
 class SharedNDArrayPool:

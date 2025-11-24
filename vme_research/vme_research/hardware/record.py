@@ -10,6 +10,7 @@ import json
 import numpy as np
 import pandas as pd
 import pickle
+from vme_research.hardware.time_source import TimeSource
 from vme_research.messaging.shared_ndarray import SharedNDArray
 
 
@@ -42,7 +43,6 @@ def get_latest_sequence_directory(dataset_prefix):
     )
     return previous_recordings[-1]
 
-
 class Record:
     def __init__(self, save_directory, time_source=None, fields_options=None):
         self.save_directory = save_directory
@@ -52,7 +52,7 @@ class Record:
         if fields_options is not None:
             self.set_fields_options(fields_options)
 
-        self.time_source = time_source
+        self.time_source: TimeSource = time_source
 
     def set_fields_options(self, fields_options):
         self.fields_options = fields_options
@@ -105,7 +105,6 @@ class Record:
 
         np.save(os.path.join(self.save_directory, "t"), np.array(self.t_list))
         info_dict["fields"]["t"] = "t.npy"
-
         np.save(
             os.path.join(self.save_directory, "t_received.npy"),
             np.array(self.t_received_list),
@@ -177,6 +176,7 @@ class Load:
             )
         else:
             self.last_t_index = 0
+            
 
     def _load_field_at_time(self, t_index):
         fields_data = []
@@ -197,7 +197,7 @@ class Load:
 
     def get(
         self, t, ret_t_received=False
-    ):  # -> tuple[bool, float | None, list | tuple]: TODO: levi does not know how to update the type annotations after adding ret_t_received
+    ):  # -> tuple[bool, float | None, list | tuple]: TODO: <> does not know how to update the type annotations after adding ret_t_received
         t_array = self.info_dict["fields"]["t_received"]
         assert t_array.shape[0] == self.info_dict["fields"]["t"].shape[0]
         if self.last_t_index < t_array.shape[0] and t_array[self.last_t_index] < t:
@@ -268,7 +268,6 @@ class LoadEventStream(Load):
     def __init__(self, save_directory, tskip=None):
         super().__init__(save_directory, tskip)
         # TODO Hack in place load
-        print(os.path.join(self.save_directory, self.get_appended()["events_t"]))
         self.get_appended()["events_t"] = np.load(os.path.join(self.save_directory, self.get_appended()["events_t"])).astype(np.int64)
         self.get_appended()["events_xy"] = np.load(os.path.join(self.save_directory, self.get_appended()["events_xy"]))
         self.get_appended()["events_p"] = np.load(os.path.join(self.save_directory, self.get_appended()["events_p"]))

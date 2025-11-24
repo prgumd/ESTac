@@ -2,28 +2,41 @@ from multiprocessing import Process
 import time
 
 import cv2
-import mujoco # TODO lazy imports...
+import mujoco  # TODO lazy imports...
 import numpy as np
 
 V4L2CameraFieldsOptions = {
-    'name': 'V4L2Camera',
-    'version': '0.0.1',
-    'fields': [{'name': 'frame', 'type': str(np.ndarray), 'split': True}],
-    'append_fields': [{'name': 'res', 'type': str(list), 'split': False},
-                      {'name': 'K', 'type': str(list), 'split': False},
-                      {'name': 'dist', 'type': str(list), 'split': False}]
+    "name": "V4L2Camera",
+    "version": "0.0.1",
+    "fields": [{"name": "frame", "type": str(np.ndarray), "split": True}],
+    "append_fields": [
+        {"name": "res", "type": str(list), "split": False},
+        {"name": "K", "type": str(list), "split": False},
+        {"name": "dist", "type": str(list), "split": False},
+    ],
 }
 
+
 class V4L2Camera(Process):
-    def __init__(self,
-                 stop,
-                 time_source,
-                 device='/dev/video0',
-                 res=(640,480), fps=60,
-                 recorder=None, loader=None,
-                 pub_sub=None, pub_sub_sim=None,
-                 ndarray_pool = None,
-                 K=None, dist=None, K_new=None, shape_new=None, model='planar'):
+    def __init__(
+        self,
+        stop,
+        time_source,
+        device="/dev/video0",
+        res=(640, 480),
+        fps=60,
+        recorder=None,
+        loader=None,
+        pub_sub=None,
+        pub_sub_sim=None,
+        ndarray_pool=None,
+        K=None,
+        dist=None,
+        K_new=None,
+        shape_new=None,
+        model="planar",
+        skip_n_frames=0,
+    ):
         super(V4L2Camera, self).__init__(daemon=True)
 
         self.stop = stop
@@ -31,32 +44,49 @@ class V4L2Camera(Process):
         self.device = device
         self.fps = fps
         self.recorder = recorder
-        if self.recorder: self.recorder.set_fields_options(V4L2CameraFieldsOptions)
+        if self.recorder:
+            self.recorder.set_fields_options(V4L2CameraFieldsOptions)
         self.loader = loader
         self.pub_sub = pub_sub
         self.pub_sub_sim = pub_sub_sim
         self.ndarray_pool = ndarray_pool
 
+        self.skip_n_frames = skip_n_frames
+        self.frame_count = 0
         # If loading from data and the user has not specified their own calibration
         if self.loader and K is None:
-            self.res  = np.array(self.loader.get_appended()['res'])
-            self.K    = np.array(self.loader.get_appended()['K'])
-            self.dist = np.array(self.loader.get_appended()['dist'])
+            self.res = np.array(self.loader.get_appended()["res"])
+            self.K = np.array(self.loader.get_appended()["K"])
+            self.dist = np.array(self.loader.get_appended()["dist"])
         else:
-            self.res  = res
-            self.K    = K
+            self.res = res
+            self.K = K
             self.dist = dist
 
         self.K_new = K_new
         self.shape_new = shape_new
         self.model = model
         if self.K_new is not None:
-            if self.model == 'planar':
-                self.map1, self.map2 = cv2.initUndistortRectifyMap(self.K, self.dist, np.eye(3), self.K_new, (self.shape_new[1], self.shape_new[0]), cv2.CV_32FC1)
-            elif self.model == 'fisheye':
-                self.map1, self.map2 = cv2.fisheye.initUndistortRectifyMap(self.K, self.dist, np.eye(3), self.K_new, (self.shape_new[1], self.shape_new[0]), cv2.CV_32FC1)
+            if self.model == "planar":
+                self.map1, self.map2 = cv2.initUndistortRectifyMap(
+                    self.K,
+                    self.dist,
+                    np.eye(3),
+                    self.K_new,
+                    (self.shape_new[1], self.shape_new[0]),
+                    cv2.CV_32FC1,
+                )
+            elif self.model == "fisheye":
+                self.map1, self.map2 = cv2.fisheye.initUndistortRectifyMap(
+                    self.K,
+                    self.dist,
+                    np.eye(3),
+                    self.K_new,
+                    (self.shape_new[1], self.shape_new[0]),
+                    cv2.CV_32FC1,
+                )
             else:
-                raise Exception('Unknown camera model')
+                raise Exception("Unknown camera model")
 
         self.last_frame_t = None
 
@@ -69,7 +99,9 @@ class V4L2Camera(Process):
                 frame_out = cv2.remap(frame, self.map1, self.map2, cv2.INTER_LINEAR)
             else:
                 frame_out = self.ndarray_pool.get()
-                cv2.remap(frame, self.map1, self.map2, cv2.INTER_LINEAR, dst=frame_out.x)
+                cv2.remap(
+                    frame, self.map1, self.map2, cv2.INTER_LINEAR, dst=frame_out.x
+                )
         else:
             frame_out = frame
 
@@ -84,11 +116,16 @@ class V4L2Camera(Process):
                 self.run_loader()
             else:
                 self.run_live()
-        except KeyboardInterrupt: pass
+        except KeyboardInterrupt:
+            pass
         finally:
             if self.recorder:
                 if self.K is not None:
-                    append_values = [list(self.res), self.K.tolist(), self.dist.tolist()]
+                    append_values = [
+                        list(self.res),
+                        self.K.tolist(),
+                        self.dist.tolist(),
+                    ]
                 else:
                     append_values = [list(self.res), None, None]
                 self.recorder.close(append_values)
@@ -131,20 +168,27 @@ class V4L2Camera(Process):
                 if ret:
                     if not self.pub_sub_sim:
                         frame_t = self.cam.get(cv2.CAP_PROP_POS_MSEC) / 1000.0
-                        
+
                         # Check sample duration
                         if self.last_frame_t is None:
                             self.last_frame_t = frame_t - 1.0 / self.fps
-                        
+
                         # Check within 20%
                         if 1.2 / self.fps < frame_t - self.last_frame_t:
-                            print('Warning v4l2_camera not acheiving target fps', self.fps, 1.0 / (frame_t - self.last_frame_t))
+                            print(
+                                "Warning v4l2_camera not acheiving target fps",
+                                self.fps,
+                                1.0 / (frame_t - self.last_frame_t),
+                            )
                         self.last_frame_t = frame_t
 
                     if self.recorder is not None:
-                        self.recorder.pub(frame_t, (frame,))
+                        if self.frame_count > self.skip_n_frames:
+                            self.recorder.pub(frame_t, (frame,))
 
-                    self.post_process(frame_t, (frame,))
+                    if self.frame_count > self.skip_n_frames:
+                        self.post_process(frame_t, (frame,))
+                    self.frame_count += 1
             else:
                 time.sleep(0.001)
 
@@ -166,7 +210,8 @@ class V4L2Camera(Process):
             else:
                 time.sleep(0.001)
 
-class V4L2CameraSimulate():
+
+class V4L2CameraSimulate:
     def __init__(self, v4l2_camera, mujoco_name):
         self.mujoco_name = mujoco_name
         self.pub_sub = v4l2_camera.pub_sub_sim
@@ -183,10 +228,14 @@ class V4L2CameraSimulate():
 
         self.cam = mujoco.MjvCamera()
         self.cam.type = mujoco.mjtCamera.mjCAMERA_FIXED
-        self.cam.fixedcamid = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_CAMERA, self.mujoco_name)
+        self.cam.fixedcamid = mujoco.mj_name2id(
+            m, mujoco.mjtObj.mjOBJ_CAMERA, self.mujoco_name
+        )
 
         self.vopt = mujoco.MjvOption()
-        self.vopt.geomgroup[1] = 0 # Group 1 is the mocap markers for visualization # TODO no
+        self.vopt.geomgroup[1] = (
+            0  # Group 1 is the mocap markers for visualization # TODO no
+        )
         self.pert = mujoco.MjvPerturb()
 
         self.ctx = mujoco.MjrContext(m, mujoco.mjtFontScale.mjFONTSCALE_150)
@@ -197,11 +246,21 @@ class V4L2CameraSimulate():
     def callback(self, m, d):
         if self.last_render_t is None or d.time - self.last_render_t > 1.0 / self.fps:
             # Render the simulated camera
-            mujoco.mjv_updateScene(m, d, self.vopt, self.pert, self.cam, mujoco.mjtCatBit.mjCAT_ALL, self.scn)
+            mujoco.mjv_updateScene(
+                m,
+                d,
+                self.vopt,
+                self.pert,
+                self.cam,
+                mujoco.mjtCatBit.mjCAT_ALL,
+                self.scn,
+            )
             mujoco.mjr_render(self.viewport, self.scn, self.ctx)
-            frame = np.empty((self.cam_res[1], self.cam_res[0], 3), dtype=np.uint8) # TODO shm?
+            frame = np.empty(
+                (self.cam_res[1], self.cam_res[0], 3), dtype=np.uint8
+            )  # TODO shm?
             mujoco.mjr_readPixels(frame, None, self.viewport, self.ctx)
-            frame = cv2.flip(frame, 0) # OpenGL renders with inverted y axis
+            frame = cv2.flip(frame, 0)  # OpenGL renders with inverted y axis
             frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
             self.pub_sub.pub((d.time, frame), use_shm=[False, False, True])

@@ -61,11 +61,11 @@ class PressureSensor:
             if sequence is None:
                 sequence = get_latest_sequence_directory(name)
             loader = Load(sequence)
-            self.camera = V4L2Camera(stop, time_source, device='/dev/video0', loader=loader, pub_sub=self.camera_pub_sub, ndarray_pool=ndarray_pool)
+            self.camera = V4L2Camera(stop, time_source, device='/dev/video6', loader=loader, pub_sub=self.camera_pub_sub, ndarray_pool=ndarray_pool)
         else:
             # sequence_directory = make_sequence_directory(name)
             # recorder = Record(save_directory=sequence_directory, time_source=time_source)
-            self.camera = V4L2Camera(stop, time_source, device='/dev/video0', recorder=None, pub_sub=self.camera_pub_sub, ndarray_pool=ndarray_pool, fps=9.0)
+            self.camera = V4L2Camera(stop, time_source, device='/dev/video6', recorder=None, pub_sub=self.camera_pub_sub, ndarray_pool=ndarray_pool, fps=9.0)
         self.last_t_frame = None
         self.tracker = None
         self.first_frame = None
@@ -171,37 +171,37 @@ class PressureSensor:
                 elif error > 15.0:
                     self.flag = True
                 points = tracker_p.reshape((2, -1))
-                # if tracker_p is not None: # TODO is this check necessary
-                #     # print(tracker_p - self.tracker.p0)
-                #     frame_warped_back = np.array(hom_4p_I_W_p_all_jit(frame, tracker_p, np.eye(3), np.eye(3), 1, True, self.tracker.p0))
+                if tracker_p is not None: # TODO is this check necessary
+                    # print(tracker_p - self.tracker.p0)
+                    frame_warped_back = np.array(hom_4p_I_W_p_all_jit(frame, tracker_p, np.eye(3), np.eye(3), 1, True, self.tracker.p0))
 
-                #     points = tracker_p.reshape((2, -1))
-                #     diff_warped = np.abs(frame_warped_back.astype(np.float32) - self.first_frame.astype(np.float32)).astype(np.uint8)
-                #     diff = np.abs(frame.astype(np.float32) - self.first_frame.astype(np.float32)).astype(np.uint8)
-                #     cv2.line(frame, (int(points[0, 0]), int(points[1, 0])), (int(points[0, 1]), int(points[1, 1])), thickness=2, color=(255, 255, 255))
-                #     cv2.line(frame, (int(points[0, 1]), int(points[1, 1])), (int(points[0, 2]), int(points[1, 2])), thickness=2, color=(255, 255, 255))
-                #     cv2.line(frame, (int(points[0, 2]), int(points[1, 2])), (int(points[0, 3]), int(points[1, 3])), thickness=2, color=(255, 255, 255))
-                #     cv2.line(frame, (int(points[0, 3]), int(points[1, 3])), (int(points[0, 0]), int(points[1, 0])), thickness=2, color=(255, 255, 255))
+                    points = tracker_p.reshape((2, -1))
+                    diff_warped = np.abs(frame_warped_back.astype(np.float32) - self.first_frame.astype(np.float32)).astype(np.uint8)
+                    diff = np.abs(frame.astype(np.float32) - self.first_frame.astype(np.float32)).astype(np.uint8)
+                    cv2.line(frame, (int(points[0, 0]), int(points[1, 0])), (int(points[0, 1]), int(points[1, 1])), thickness=2, color=(255, 255, 255))
+                    cv2.line(frame, (int(points[0, 1]), int(points[1, 1])), (int(points[0, 2]), int(points[1, 2])), thickness=2, color=(255, 255, 255))
+                    cv2.line(frame, (int(points[0, 2]), int(points[1, 2])), (int(points[0, 3]), int(points[1, 3])), thickness=2, color=(255, 255, 255))
+                    cv2.line(frame, (int(points[0, 3]), int(points[1, 3])), (int(points[0, 0]), int(points[1, 0])), thickness=2, color=(255, 255, 255))
 
-                #     for i in range(points.shape[1]):
-                #         cv2.circle(frame, (int(points[0, i]), int(points[1, i])), radius=4, color=(255, 0, 0), thickness=-1)
+                    for i in range(points.shape[1]):
+                        cv2.circle(frame, (int(points[0, i]), int(points[1, i])), radius=4, color=(255, 0, 0), thickness=-1)
                     
-                #     p0_points = np.array(self.tracker.p0).reshape((2,4))
-                #     for i in range(p0_points.shape[1]):
-                #         cv2.circle(frame, (int(p0_points[0, i]), int(p0_points[1, i])), radius=4, color=(0, 0, 255), thickness=-1)
+                    p0_points = np.array(self.tracker.p0).reshape((2,4))
+                    for i in range(p0_points.shape[1]):
+                        cv2.circle(frame, (int(p0_points[0, i]), int(p0_points[1, i])), radius=4, color=(0, 0, 255), thickness=-1)
 
-                #     full_frame = np.hstack((self.first_frame, frame, 20*diff,4*diff_warped))
-                #     cv2.imshow('gelsense', full_frame)
+                    full_frame = np.hstack((self.first_frame, frame, 20*diff,4*diff_warped))
+                    cv2.imshow('gelsense', full_frame)
 
-                #     # Diff images to see biases in incoming frames
-                #     if self.last_frame_float is None:
-                #         self.last_frame_float = np.copy(frame_float)
-                #     cv2.imshow('float diff',
-                #                np.hstack((10*(frame_float - self.first_frame_float) + 0.5,
-                #                10*(frame_float - self.last_frame_float) + 0.5)))
-                #     self.last_frame_float = np.copy(frame_float)
+                    # Diff images to see biases in incoming frames
+                    if self.last_frame_float is None:
+                        self.last_frame_float = np.copy(frame_float)
+                    cv2.imshow('float diff',
+                               np.hstack((10*(frame_float - self.first_frame_float) + 0.5,
+                               10*(frame_float - self.last_frame_float) + 0.5)))
+                    self.last_frame_float = np.copy(frame_float)
 
-                #     cv2.waitKey(1)
+                    cv2.waitKey(1)
 
         return error, points
             
@@ -251,24 +251,25 @@ def detect_hole(trajectory,window_size = 100,dx=1.0):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--key_offset_x', type=float, default=0.250)
+    parser.add_argument('--key_offset_y', type=float, default=0.0)
+    parser.add_argument('--key_offset_z', type=float, default=0.0)
+    parser.add_argument('--penetration_depth', type=float, default=0.015)
+    parser.add_argument('--output_name', type=str, default=f'pin_tumbler_exp1')
+    parser.add_argument('--sequence_base', type=str, default='keyinsertion/data')
+    args = parser.parse_args()
 
     rtde_c = rtde_control.RTDEControlInterface("10.0.0.78")
     rtde_r = rtde_receive.RTDEReceiveInterface("10.0.0.78")
-    # Parameters
-    velocity = 0.01
-    acceleration = 0.5
-    dt_rtde = 1/125.0
-    lookahead_time = 0.06
-    gain = 100
     
-    tool_offset_pose = np.zeros((6))
-    tool_offset_pose[2] += 0.112
-    rtde_c.setTcp(tool_offset_pose)
-
-    output_name = "knob_0_-1.9__0_0_0_trail1"
-    shift = 0.018
-    # Hole position. I imagine the position fixed in the center of a 10x10 grid with a -2 depth
-    y_h = rtde_r.getActualTCPPose()[1]+shift
+    output_name = args.output_name
+    shift = args.penetration_depth # 0.022 - 00015, 0.004 - 0.00346, 0.015 - 0.00320
+    tool_offset_z = args.key_offset_z
+    tool_offset_y = args.key_offset_y
+    tool_offset_x = args.key_offset_x
+    # Max interations parameter
+    max_iterations = 15000
     # Amplitudes of perturbations
     A_x, A_z, A_y = 0.00, 0.00, 0.0005 # 0.00, 0.00, 0.0005  
     Ap_x, Ap_z, Ap_y = 0.0002, 0.0002, 0.0005 # 0.0002, 0.0002, 0.0005
@@ -281,8 +282,6 @@ if __name__ == "__main__":
     # Time constant for high-pass filter
     hp_tau = 1.0/(2*np.pi*0.7)
     lp_tau = 1.0/(2*np.pi*1.59)  
-    # Max interations parameter
-    max_iterations = 25000
     # Rate of phase shift for composite sinusoidal movement  
     phase_shift_rate = 0.01
     phi1_x = 0.0
@@ -292,6 +291,26 @@ if __name__ == "__main__":
     lambda_p = 0.0005
     # Multiplier for arena error  
     lambda_a = 0.0 # 0.001
+
+    # ur_rtde servo control parameters
+    velocity = 0.01
+    acceleration = 0.5
+    dt_rtde = 1/125.0
+    lookahead_time = 0.06
+    gain = 100
+
+
+
+
+
+    tool_offset_pose = np.zeros((6))
+    tool_offset_pose[0] += tool_offset_x
+    tool_offset_pose[1] += tool_offset_y
+    tool_offset_pose[2] += tool_offset_z
+    rtde_c.setTcp(tool_offset_pose)
+
+    # Hole position. I imagine the position fixed in the center of a 10x10 grid with a -2 depth
+    y_h = rtde_r.getActualTCPPose()[1]-shift
 
     print(f"yh :: {y_h}")
     init_pose = rtde_r.getActualTCPPose()
@@ -332,7 +351,7 @@ if __name__ == "__main__":
     counter = 0
     bool_press = False
 
-    sensor = PressureSensor(name="./outputs/gelsight/"+output_name)
+    sensor = PressureSensor(name="./keyinsertion/outputs/gelsight/"+output_name)
     for _ in range(5000):
         sensor.pressure_error()
     p_error = 0.0
@@ -429,7 +448,7 @@ if __name__ == "__main__":
                 
                 # Clamping the actions to search arena size
                 target_pose[0] = min(max(target_pose[0],x_init-0.01),x_init+0.01)
-                target_pose[1] = min(max(target_pose[1],y_init-0.01),y_init+0.02)
+                target_pose[1] = min(max(target_pose[1],y_init-0.025),y_init+0.025)
                 target_pose[2] = min(max(target_pose[2],z_init-0.01),z_init+0.01)
                 new_angles[0] = min(max(new_angles[0],eulers_init[0]-0.5),eulers_init[0]+0.5)
                 new_angles[1] = min(max(new_angles[1],eulers_init[1]-0.5),eulers_init[1]+0.5)
@@ -508,7 +527,7 @@ if __name__ == "__main__":
             demodulated_xrot_prev = demodulated_xrot_lpf
             demodulated_zrot_prev = demodulated_zrot_lpf
             demodulated_yrot_prev = demodulated_yrot_lpf
-
+            # print(f"Demodulated signals: {demodulated_x:.4f}, {demodulated_y:.4f}, {demodulated_z:.4f}, {demodulated_xrot:.4f}, {demodulated_yrot:.4f}, {demodulated_zrot:.4f}")
             # Parameter Update: Update the position using the demodulated signals
             # if p_error > 0.0 or bool_press:
             bool_press = True
@@ -574,11 +593,50 @@ if __name__ == "__main__":
                 "Demodulated Signal LP": demodulated_signal_lp,
                 "Actual Trajectory" : actual_trajectory,
                 "Tracker": points_array,
-                "Tool Offset": tool_offset_pose[2]}
+                "Tool Offset pose": tool_offset_pose,
+                "Penetration Depth": shift}
     
-    np.save("./outputs/final_exp/"+output_name,data_dict)
+    # import matplotlib.pyplot as plt
 
-    data = adjust_data(data_dict)
+    # # Plotting Demodulated Signal HP and Control Input
+    # fig, axs = plt.subplots(3, 1, figsize=(8, 16))
+    # fig.suptitle('Demodulated Signal HP and Control Input')
+    # axs[0].plot(data_dict['Time'], data_dict['Demodulated Signal'][:, 0], label='dm')
+    # axs[0].set_ylabel('X')
+    # axs[0].legend()
+    # axs[1].plot(data_dict['Time'], data_dict['Demodulated Signal'][:, 1], label='dm')
+    # axs[1].set_ylabel('Y')
+    # axs[1].legend()
+    # axs[2].plot(data_dict['Time'], data_dict['Demodulated Signal'][:, 2], label='dm')
+    # axs[2].set_ylabel('Z')
+    # axs[2].legend()
+    # axs[0].plot(data_dict['Time'], data_dict['Control Input'][:, 0], label='c')
+    # axs[0].set_ylabel('X')
+    # axs[0].legend()
+    # axs[1].plot(data_dict['Time'], data_dict['Control Input'][:, 1], label='c')
+    # axs[1].set_ylabel('Y')
+    # axs[1].legend()
+    # axs[2].plot(data_dict['Time'], data_dict['Control Input'][:, 2], label='c')
+    # axs[2].set_ylabel('Z')
+    # axs[2].legend()
+    # axs[0].plot(data_dict['Time'], data_dict['Total Error HP'], label='e')
+    # axs[0].set_ylabel('X')
+    # axs[0].legend()
+    # axs[1].plot(data_dict['Time'], data_dict['Total Error HP'], label='e')
+    # axs[1].set_ylabel('Y')
+    # axs[1].legend()
+    # axs[2].plot(data_dict['Time'], data_dict['Total Error HP'], label='e')
+    # axs[2].set_ylabel('Z')
+    # axs[2].legend()
+
+    plt.show()
+
+    sequence_dir = os.path.join(args.sequence_base, args.output_name)
+    if not os.path.exists(sequence_dir):
+        os.makedirs(sequence_dir)
+    np.save(os.path.join(sequence_dir, "insertion_data.npy"), data_dict)
+
+    # data = adjust_data(data_dict)
 
     sensor.camera.stop.value = 1
     time.sleep(2.0)

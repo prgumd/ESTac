@@ -1,14 +1,13 @@
 import setuptools
 
-with open('README.md', 'r') as fh:
-    long_description = fh.read()
+long_description = ''
 
 setuptools.setup(
     name='vme_research',
     version='0.0.1',
-    author='Levi Burner',
-    author_email='lburner@umd.edu',
-    description='Visuomotor Embodiment research',
+    author='Anonymous',
+    author_email='Anonymous',
+    description='research',
     long_description=long_description,
     long_description_content_type='text/markdown',
     url='',

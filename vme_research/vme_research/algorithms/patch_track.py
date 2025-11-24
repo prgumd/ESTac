@@ -3,7 +3,7 @@
 # Track a patch with LK like methods
 #
 # History:
-# 11-15-23 - Levi Burner - Created file, LK like patch tracking using Jax
+# 11-15-23 - <> - Created file, LK like patch tracking using Jax
 #
 ###############################################################################
 
@@ -11,6 +11,7 @@ import time
 import cv2
 import jax
 import jax.numpy as jnp
+from jax.scipy.spatial.transform import Rotation as jR
 from jax import config
 config.update("jax_enable_x64", True)
 import numpy as np
@@ -62,11 +63,12 @@ def flow_loop_body(p_delta_p, I, W_params, GN_params, C_params, I_W_p, W_W_inv):
 
     # print('p warped back')
     # print(p.reshape((2, 4)))
-    # I_np = np.array(I_warped_back_considered).reshape((540, 960))
-    # T_np = GN_params[0].reshape((540, 960))
+    # print(I_warped_back_considered.shape)
+    # I_np = np.array(I_warped_back_considered).reshape((108, 192))
+    # T_np = GN_params[0].reshape((108, 192))
     # diff_image = np.abs(I_np - T_np)
     # cv2.imshow('alignment', np.hstack((I_np, T_np, diff_image)))
-    # cv2.waitKey(1)
+    # cv2.waitKey(0)
 
     return jnp.array((*p, *delta_p, steps + 1))
 
@@ -135,6 +137,7 @@ class JTrackRotInvariant:
                  delta_p_stop, max_steps,
                  p0, prepare_template, flow_loop, I_W_p,
                  blur_new_frame=False):
+        self.rect = rect
         self.K = K
         self.K_inv = jnp.linalg.inv(K)
         self.delta_p_stop = delta_p_stop
@@ -145,7 +148,7 @@ class JTrackRotInvariant:
         self.flow_loop = flow_loop
         self.blur_new_frame = blur_new_frame
         (self.template_shape, self.yy_xx, self.T_blurred_considered,
-         self.dT_dp, self.H_T_dp_inv) = prepare_template(template_image, rect, R_c_fc, K, stride)
+         self.dT_dp, self.H_T_dp_inv) = prepare_template(template_image, self.rect, R_c_fc, K, stride)
         self.sec_it_jax = []
         # print('template shape', self.template_shape)
 
@@ -181,7 +184,12 @@ class JTrackRotInvariant:
     def visualize(self, frame_gray, R_c_fc):
         W_params = (R_c_fc, self.K, self.K_inv, self.yy_xx, self.p0)
         I_warped = self.I_W_p(frame_gray, self.p, W_params)
-        return np.hstack((np.array(I_warped.reshape(self.template_shape)), np.array(self.T_blurred_considered.reshape(self.template_shape))))
+        diff_image = (I_warped - self.T_blurred_considered + 1) / 2.0
+        return np.hstack((
+            np.array(I_warped.reshape(self.template_shape)),
+            np.array(self.T_blurred_considered.reshape(self.template_shape)),
+            np.array(diff_image.reshape(self.template_shape))
+        ))
 
 def affine_W_p(p, R_c_fc, K, K_inv, yy_xx, p0):
     # Affine matrix parameterized by p
@@ -462,7 +470,8 @@ hom_4p_I_W_p     = lambda *args: I_W_p(*args, hom_4p_W_p)
 hom_4p_I_W_p_jit = jax.jit(hom_4p_I_W_p)
 hom_4p_dI_W_p_dp = jax.jacfwd(hom_4p_I_W_p, argnums=1)
 
-hom_4p_I_W_p_all = lambda I, p, R_c_fc, K, stride, reshape, p0: I_W_p_all(I, p, (R_c_fc, K, jnp.linalg.inv(K)), stride, p0, hom_4p_I_W_p, reshape)
+hom_4p_I_W_p_all = lambda I, p, R_c_fc, K, stride, reshape, p0: I_W_p_all(
+    I, p, (R_c_fc, K, jnp.linalg.inv(K)), stride, p0, hom_4p_I_W_p, reshape)
 hom_4p_I_W_p_all_jit = jax.jit(hom_4p_I_W_p_all, static_argnames=('stride', 'reshape'))
 
 hom_4p_Sigma_inv = 0.0 * jnp.eye(8)
@@ -486,7 +495,92 @@ class JHom4pTrackRotInvariant(JTrackRotInvariant):
         super().__init__(**args, p0=p0, prepare_template=hom_4p_prepare_template_p0, I_W_p=hom_4p_I_W_p_jit, flow_loop=hom_4p_flow_loop_jit)
         # super().__init__(**args, p0=p0, prepare_template=hom_4p_prepare_template_p0, I_W_p=hom_4p_I_W_p, flow_loop=hom_4p_flow_loop)
 
+# Jax has such a function in a port of Scipy's rotation module, however autodiff
+# returns NaN's when norm(w) = 0. This version of the function fixes that with the
+# "double where" trick which makes this function first order differentiable.
+# https://github.com/jax-ml/jax/issues/5039#issuecomment-735430180
+def expw(w):
+    # When norm(w) < epsilon this function returns NaN's during forward autodiff
+    epsilon = 1e-8
 
+    theta = jnp.linalg.norm(w)
+
+    y = jnp.where(theta < epsilon, 1.0, theta)
+    sin_theta_over_theta = jnp.where(theta < epsilon, 1.0, jnp.sin(y) / y)
+
+    # Double where trick should work on cosine term as well
+    y2 = jnp.where(theta < epsilon, 1.0, theta)
+    one_minus_cos_theta_over_theta2 = jnp.where(theta < epsilon, 0.0, (1 - jnp.cos(y2)) / (y2 * y2))
+
+    K = jnp.cross(jnp.eye(3), w) # Don't divide by theta here, instead bake into the terms above
+
+    R = jnp.eye(3) + sin_theta_over_theta * K + one_minus_cos_theta_over_theta2 * (K @ K)
+    return R
+
+def rot_W_p(p, R_c_fc, K, K_inv, yy_xx, p0):
+    # Get 3x3 rotation matrix
+    # R_fcprime_fc = jR.from_rotvec(p).as_matrix()
+    R_fcprime_fc = expw(p)
+
+    # Derived directly from perspective projection equations
+    tmp = R_c_fc @ R_fcprime_fc @ K_inv
+
+    K_cropped = K[0:2, :]
+    top = K_cropped @ tmp
+    bot = tmp[2, :]
+
+    rot_times_homography = jnp.vstack((top, bot))
+
+    # Swap X and Y axis on input and output
+    # This the easiest way to accomdate R and intriniscs being in x,y order
+    # while scipy coordinates are in y,x order
+    S = jnp.array(((0., 1., 0.),
+                   (1., 0., 0.),
+                   (0., 0., 1.)))
+    rot_times_homography_rolled = S @ rot_times_homography @ S
+
+    new_yy_xx = rot_times_homography_rolled @ yy_xx
+
+    final_yy_xx = (new_yy_xx[0:2, :] / new_yy_xx[2, :])
+    return final_yy_xx
+
+# Invert and compose the rotation warps
+def rot_compose_p_with_p_inv(last_p, delta_p_inv, p0):
+    # Something like
+    R_delta = jR.from_rotvec(delta_p_inv).as_matrix().T
+    new_p = jR.from_matrix(jR.from_rotvec(last_p).as_matrix() @ R_delta).as_rotvec()
+    delta_p = jR.from_matrix(R_delta).as_rotvec()
+    return new_p, delta_p
+
+def rot_flow_loop_cond(p_delta_p, delta_p_stop, start_t, max_steps):
+    N_p = (p_delta_p.shape[0] - 1) // 2
+    delta_p = p_delta_p[N_p:2*N_p]
+    steps = p_delta_p[2*N_p]
+    return (jnp.linalg.norm(delta_p) > delta_p_stop) & (steps < max_steps)
+
+rot_I_W_p     = lambda *args: I_W_p(*args, rot_W_p)
+rot_I_W_p_jit = jax.jit(rot_I_W_p)
+rot_dI_W_p_dp = jax.jacfwd(rot_I_W_p, argnums=1)
+
+rot_I_W_p_all = lambda I, p, R_c_fc, K, stride, reshape, p0: I_W_p_all(I, p, (R_c_fc, K, jnp.linalg.inv(K)), stride, p0, rot_I_W_p, reshape)
+rot_I_W_p_all_jit = jax.jit(rot_I_W_p_all, static_argnames=('stride', 'reshape'))
+
+rot_Sigma_inv = 0.0 * jnp.eye(3)
+rot_prepare_template     = lambda *args: prepare_template(*args, rot_Sigma_inv, rot_I_W_p, rot_dI_W_p_dp)
+rot_prepare_template_jit = jax.jit(rot_prepare_template, static_argnums=(1,))
+
+rot_flow_loop_body = lambda *args: flow_loop_body(*args, rot_I_W_p, rot_compose_p_with_p_inv)
+rot_flow_loop      = lambda *args: flow_loop     (*args, rot_flow_loop_cond, rot_flow_loop_body)
+# rot_flow_loop      = lambda *args: flow_loop_no_jit(*args, rot_flow_loop_cond, rot_flow_loop_body)
+rot_flow_loop_jit = jax.jit(rot_flow_loop)
+
+class JRotTrackRotInvariant(JTrackRotInvariant):
+    def __init__(self, **args):
+        # p0 = jnp.eye(3).flatten()
+        p0 = jnp.zeros((3,))
+        rot_prepare_template_p0 = lambda *args: rot_prepare_template(*args, p0)
+        super().__init__(**args, p0=p0, prepare_template=rot_prepare_template_p0, I_W_p=rot_I_W_p_jit, flow_loop=rot_flow_loop_jit)
+        # super().__init__(**args, p0=p0, prepare_template=rot_prepare_template_p0, I_W_p=rot_I_W_p, flow_loop=rot_flow_loop)
 
 def test():
     # AxT = matrix_outer_vector(jnp.eye(3), jnp.array((1,2,3)))
